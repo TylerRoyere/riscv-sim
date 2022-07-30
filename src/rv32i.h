@@ -34,9 +34,11 @@ void execute_SLTIU(rv_instruction inst, rv_cpu_state *state);
 void execute_XORI(rv_instruction inst, rv_cpu_state *state);
 void execute_ORI(rv_instruction inst, rv_cpu_state *state);
 void execute_ANDI(rv_instruction inst, rv_cpu_state *state);
+#if 0
 void execute_SLLI(rv_instruction inst, rv_cpu_state *state);
 void execute_SRLI(rv_instruction inst, rv_cpu_state *state);
 void execute_SRAI(rv_instruction inst, rv_cpu_state *state);
+#endif
 
 void execute_ADD(rv_instruction inst, rv_cpu_state *state);
 void execute_SUB(rv_instruction inst, rv_cpu_state *state);

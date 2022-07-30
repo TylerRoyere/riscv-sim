@@ -14,8 +14,8 @@ rv_pc_increment(rv_cpu_state *state, rv_operation last_op)
 {
     (void) last_op;
     if (rv_cpu_flag_is_set(state,
-                RV_BRANCH_TAKEN_FLAG | RV_JUMP_TAKEN_FLAG)) {
-        rv_cpu_clear_flag(state, RV_BRANCH_TAKEN_FLAG | RV_JUMP_TAKEN_FLAG);
+                RV_BRANCH_TAKEN_FLAG | RV_JUMP_TAKEN_FLAG | RV_TRAP_TAKEN_FLAG)) {
+        rv_cpu_clear_flag(state, RV_BRANCH_TAKEN_FLAG | RV_JUMP_TAKEN_FLAG | RV_TRAP_TAKEN_FLAG);
     }
     else {
         state->rvi_pc += 4;

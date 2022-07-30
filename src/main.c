@@ -86,6 +86,7 @@ main(int argc, char* argv[])
     
     filestr = read_file(argv[1], &length);
     if (filestr == NULL) {
+        perror("Unable to read file:");
         FAIL();
     }
 

@@ -1,37 +1,9 @@
 #include "rv32i.h"
 #include "decode.h"
 #include "register.h"
-
-#define UNPACK_R_TYPE(inst, rs1, rs2, rd) \
-    uint8_t rs1 = RV_INSTRUCTION_RS1(inst); \
-    uint8_t rs2 = RV_INSTRUCTION_RS2(inst); \
-    uint8_t rd = RV_INSTRUCTION_RD(inst)
-
-#define UNPACK_U_TYPE(inst, imm, rd) \
-    rvi_register imm = rv_u_type_immediate(inst); \
-    uint8_t rd = RV_INSTRUCTION_RD(inst)
-
-#define UNPACK_I_TYPE(inst, imm, rs, rd) \
-    rvi_register imm = rv_i_type_immediate(inst); \
-    uint8_t rs = RV_INSTRUCTION_RS1(inst); \
-    uint8_t rd = RV_INSTRUCTION_RD(inst)
-
-#define UNPACK_J_TYPE(inst, imm, rd) \
-    rvi_register imm = rv_j_type_immediate(inst); \
-    uint8_t rd = RV_INSTRUCTION_RD(inst)
-
-#define UNPACK_S_TYPE(inst, offset, src, base) \
-    rvi_register offset = rv_s_type_immediate(inst); \
-    uint8_t src = RV_INSTRUCTION_RS2(inst); \
-    uint8_t base = RV_INSTRUCTION_RS1(inst)
-
-#define UNPACK_B_TYPE(inst, offset, rs1, rs2) \
-    rvi_register offset = rv_b_type_immediate(inst); \
-    uint8_t rs1 = RV_INSTRUCTION_RS1(inst); \
-    uint8_t rs2 = RV_INSTRUCTION_RS2(inst)
-
-#define GET_SHAMT(immediate) \
-    (immediate & 0x1F)
+#include "csr.h"
+#include "utils.h"
+#include "trap.h"
 
 static inline rvi_register
 rv32i_jump(rvi_register target, rv_cpu_state *state)
@@ -262,6 +234,7 @@ execute_ANDI(rv_instruction inst, rv_cpu_state *state)
     rvi_reg_write(state, rd, value);
 }
 
+#if 0
 void
 execute_SLLI(rv_instruction inst, rv_cpu_state *state)
 {
@@ -288,6 +261,7 @@ execute_SRAI(rv_instruction inst, rv_cpu_state *state)
     rvi_register value = rvi_reg_read(state, rs) >> shamt;
     rvi_reg_write(state, rd, value);
 }
+#endif
 
 void
 execute_ADD(rv_instruction inst, rv_cpu_state *state)
@@ -371,5 +345,126 @@ execute_AND(rv_instruction inst, rv_cpu_state *state)
     UNPACK_R_TYPE(inst, rs1, rs2, rd);
     rvi_register result = rvi_reg_read(state, rs1) & rvi_reg_read(state, rs2);
     rvi_reg_write(state, rd, result);
+}
+
+
+void
+execute_FENCE(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    /* Only one hart, do nothing */
+    (void) immediate, (void) rs, (void) rd, (void) state;
+}
+
+
+void
+execute_FENCEI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    /* No need to synchronize instruction and data streams */
+    (void) immediate, (void) rs, (void) rd, (void) state;
+    TODO("Need to synchronize instruction and data streams\n");
+}
+
+void
+execute_ECALL(rv_instruction inst, rv_cpu_state *state)
+{
+    /* No environment to bug for the moment */
+    (void) inst, (void) state;
+    rv_csr_write(RV_CSR_MEPC, state, (rv_csr)state->rvi_pc);
+    rv_do_trap(0, 8 + state->privilege, state);
+    printf("\nNew pc = %ld\n\n", state->rvi_pc);
+}
+
+void
+execute_EBREAK(rv_instruction inst, rv_cpu_state *state)
+{
+    /* No debugger to hand control over to for the moment */
+    (void) inst, (void) state;
+    TODO("Need to invoke environment breakpoint\n");
+}
+
+void
+execute_CSRRW(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+
+    rv_csr_addr address = (rv_csr_addr)(immediate & RV_CSR_ADDR_MASK);
+    rv_csr new_csr_value = (rv_csr)rvi_reg_read(state, rs);
+    if (rd != 0) {
+        rv_csr csr_value = rv_csr_read(address, state);
+        rvi_reg_write(state, rd, ZERO_EXTEND(csr_value, rvi_register));
+    }
+    rv_csr_write(address, state, new_csr_value);
+}
+
+
+void
+execute_CSRRS(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rv_csr_addr address = (rv_csr_addr)(immediate & RV_CSR_ADDR_MASK);
+    rv_csr csr_value = rv_csr_read(address, state);
+    rvi_reg_write(state, rd, ZERO_EXTEND(csr_value, rvi_register));
+    if (rs != 0) {
+        rvi_register mask = rvi_reg_read(state, rs);
+        rv_csr_set_bits(address, state, mask);
+    }
+}
+
+
+void
+execute_CSRRC(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rv_csr_addr address = (rv_csr_addr)(immediate & RV_CSR_ADDR_MASK);
+    rv_csr csr_value = rv_csr_read(address, state);
+    rvi_reg_write(state, rd, ZERO_EXTEND(csr_value, rvi_register));
+    if (rs != 0) {
+        rvi_register mask = rvi_reg_read(state, rs);
+        rv_csr_clear_bits(address, state, mask);
+    }
+}
+
+
+void
+execute_CSRRWI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rv_csr_addr address = (rv_csr_addr)(immediate & RV_CSR_ADDR_MASK);
+    rv_csr new_csr_value = ZERO_EXTEND(rs, rv_csr);
+    if (rd != 0) {
+        rv_csr csr_value = rv_csr_read(address, state);
+        rvi_reg_write(state, rd, ZERO_EXTEND(csr_value, rvi_register));
+    }
+    rv_csr_write(address, state, new_csr_value);
+}
+
+
+void
+execute_CSRRSI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rv_csr_addr address = (rv_csr_addr)(immediate & RV_CSR_ADDR_MASK);
+    rv_csr csr_value = rv_csr_read(address, state);
+    rvi_reg_write(state, rd, ZERO_EXTEND(csr_value, rvi_register));
+    if (rs != 0) {
+        rvi_register mask = ZERO_EXTEND(rs, rvi_register);
+        rv_csr_set_bits(address, state, mask);
+    }
+}
+
+
+void
+execute_CSRRCI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rv_csr_addr address = (rv_csr_addr)(immediate & RV_CSR_ADDR_MASK);
+    rv_csr csr_value = rv_csr_read(address, state);
+    rvi_reg_write(state, rd, ZERO_EXTEND(csr_value, rvi_register));
+    if (rs != 0) {
+        rvi_register mask = ZERO_EXTEND(rs, rvi_register);
+        rv_csr_clear_bits(address, state, mask);
+    }
 }
 

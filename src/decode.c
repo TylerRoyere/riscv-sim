@@ -6,6 +6,8 @@
 #include "decode.h"
 #include "opcodes.h"
 #include "cpu.h"
+#include "csr.h"
+#include "utils.h"
 
 #define UNSUPPORTED(op) do { \
     printf("Unsupported instruction opcode 0x%02X\n", op); \
@@ -106,6 +108,7 @@ rv_decode_branch_instruction(rv_instruction inst)
     static const rv_operation branch_op_table[8] = {
         [0] = RV32I_BEQ,
         [1] = RV32I_BNE,
+        [4] = RV32I_BLT,
         [5] = RV32I_BGE,
         [6] = RV32I_BLTU,
         [7] = RV32I_BGEU
@@ -121,8 +124,10 @@ rv_decode_load_instruction(rv_instruction inst)
         [0] = RV32I_LB,
         [1] = RV32I_LH,
         [2] = RV32I_LW,
+        [3] = RV64I_LD,
         [4] = RV32I_LBU,
         [5] = RV32I_LHU,
+        [6] = RV64I_LWU,
     };
 
     return load_op_table[RV_INSTRUCTION_FUNCT3(inst)];
@@ -135,6 +140,7 @@ rv_decode_store_instruction(rv_instruction inst)
         [0] = RV32I_SB,
         [1] = RV32I_SH,
         [2] = RV32I_SW,
+        [3] = RV64I_SD,
     };
     
     return store_op_table[RV_INSTRUCTION_FUNCT3(inst)];
@@ -162,10 +168,34 @@ rv_decode_op_immediate_instruction(rv_instruction inst)
             if (BIT_SET(inst.value, 30)) return RV32I_SRAI;
             /* fallthrough */
         case RV32I_SLLI:
-            if (RV_INSTRUCTION_FUNCT7(inst)) return RV_UNSUPPORTED;
+            /* This is a hack to account for the shamt being one bit larger */
+            if (RV_INSTRUCTION_FUNCT7(inst) >> 1) return RV_UNSUPPORTED;
             break;
         default:
             break;
+    }
+
+    return op;
+}
+
+static rv_operation
+rv_decode_op_immediate_32_instruction(rv_instruction inst)
+{
+    static const rv_operation op_table[8] = {
+        [0] = RV64I_ADDIW,
+        [1] = RV64I_SLLIW,
+        [5] = RV64I_SRLIW,
+    };
+
+    rv_operation op = op_table[RV_INSTRUCTION_FUNCT3(inst)];
+
+    if (op == RV64I_SRLIW) {
+        if (RV_INSTRUCTION_FUNCT7(inst) == 0x20) {
+            op = RV64I_SRAIW;
+        }
+        else if (RV_INSTRUCTION_FUNCT7(inst) != 0x20) {
+            op = RV_UNSUPPORTED;
+        }
     }
 
     return op;
@@ -200,6 +230,31 @@ rv_decode_op_instruction(rv_instruction inst)
     }
     
     if (RV_INSTRUCTION_FUNCT7(inst)) return RV_UNSUPPORTED;
+
+    return op;
+}
+
+static rv_operation
+rv_decode_op_32_instruction(rv_instruction inst)
+{
+    static const rv_operation op_table[8] = {
+        [0] = RV64I_ADDW,
+        [1] = RV64I_SLLW,
+        [5] = RV64I_SRLW,
+    };
+
+    rv_operation op = op_table[RV_INSTRUCTION_FUNCT3(inst)];
+
+    switch (op) {
+        case RV64I_ADDW:
+            if (BIT_SET(inst.value, 30)) return RV64I_SUBW;
+            break;
+        case RV64I_SRLW:
+            if (BIT_SET(inst.value, 30)) return RV64I_SRAW;
+            break;
+        default:
+            break;
+    }
 
     return op;
 }
@@ -244,14 +299,17 @@ rv_decode_system_instruction(rv_instruction inst)
     rv_operation op = system_op_table[RV_INSTRUCTION_FUNCT3(inst)];
 
     if (op == RV32I_ECALL) {
-        if (inst.value == 0x00000073) {
-            return RV32I_ECALL;
-        }
-        else if (inst.value == 0x00100073) {
-            return RV32I_EBREAK;
-        }
-        else {
-            return RV_UNSUPPORTED;
+        switch (inst.value) {
+            case 0x00000073:
+                return RV32I_ECALL;
+            case 0x00100073:
+                return RV32I_EBREAK;
+            case 0x10200073:
+                return RV_SRET;
+            case 0x30200073:
+                return RV_MRET;
+            default:
+                return RV_UNSUPPORTED;
         }
     }
 
@@ -283,7 +341,7 @@ rv_decode_instruction(rv_instruction inst)
             return RV32I_AUIPC;
             break;
         case RV_OP_IMM_32_OPCODE:
-            UNSUPPORTED(opcode);
+            return rv_decode_op_immediate_32_instruction(inst);
             break;
         case RV_STORE_OPCODE:
             return rv_decode_store_instruction(inst);
@@ -304,6 +362,7 @@ rv_decode_instruction(rv_instruction inst)
             return RV32I_LUI;
             break;
         case RV_OP_32_OPCODE:
+            return rv_decode_op_32_instruction(inst);
             UNSUPPORTED(opcode);
             break;
         case RV_MADD_OPCODE:
@@ -345,6 +404,14 @@ rv_decode_instruction(rv_instruction inst)
     }
 }
 
+static inline int
+rv_is_csr_instruction(rv_decoded_instruction inst)
+{
+    uint32_t opcode = RV_INSTRUCTION_OPCODE(inst.format);
+    uint32_t funct3 = RV_INSTRUCTION_FUNCT3(inst.format);
+    return (opcode == 0x73) && (funct3 != 0x0);
+}
+
 void
 rv_print_decoded_instruction(rv_decoded_instruction inst)
 {
@@ -362,10 +429,19 @@ rv_print_decoded_instruction(rv_decoded_instruction inst)
                 register_names[RV_INSTRUCTION_RS2(inst.format)]);
             break;
         case RV_I_TYPE:
-            printf("%s,%s,%"PRId64"\n",
-                register_names[RV_INSTRUCTION_RD(inst.format)],
-                register_names[RV_INSTRUCTION_RS1(inst.format)],
-                (int64_t)rv_i_type_immediate(inst.format));
+            if (!rv_is_csr_instruction(inst)) {
+                printf("%s,%s,%"PRId64"\n",
+                    register_names[RV_INSTRUCTION_RD(inst.format)],
+                    register_names[RV_INSTRUCTION_RS1(inst.format)],
+                    (int64_t)rv_i_type_immediate(inst.format));
+            }
+            else {
+                uint64_t csr = rv_i_type_immediate(inst.format) & 0xFFF;
+                printf("%s,%s,%s\n",
+                    register_names[RV_INSTRUCTION_RD(inst.format)],
+                    register_names[RV_INSTRUCTION_RS1(inst.format)],
+                    rv_csr_names[csr]);
+            }
             break;
         case RV_S_TYPE:
             printf("%s,%s,%"PRId64"\n",

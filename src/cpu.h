@@ -6,18 +6,29 @@
 
 #include "memory.h"
 #include "register.h"
+#include "csr.h"
 
 #define RV_NUM_REGS 32
 
 typedef enum rv_cpu_flag {
     RV_BRANCH_TAKEN_FLAG = 0x1,
     RV_JUMP_TAKEN_FLAG = 0x2,
+    RV_TRAP_TAKEN_FLAG = 0x4,
 } rv_cpu_flag;
 
+typedef enum rv_cpu_privilege {
+    RV_USER         = 0x0,
+    RV_SUPERVISOR   = 0x1,
+    /* 0x2 is Reserved */
+    RV_MACHINE      = 0x3,
+} rv_cpu_privilege;
+
 typedef struct rv_cpu_state {
-    rvi_register rvi_regs[RV_NUM_REGS];
-    rvi_register rvi_pc;
-    rv_cpu_flag flags;
+    rvi_register        rvi_regs[RV_NUM_REGS];
+    rvi_register        rvi_pc;
+    rv_csr_state        csrs;
+    rv_cpu_flag         flags;
+    rv_cpu_privilege    privilege;
 } rv_cpu_state;
 
 extern const char *const register_names[RV_NUM_REGS];

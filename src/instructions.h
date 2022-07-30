@@ -12,24 +12,6 @@ typedef enum rv_instruction_format {
     RV_J_TYPE,
 } rv_instruction_format;
 
-#define RV_INSTRUCTION_FUNCT7(inst) \
-    (((inst).value >> 25) & 0x7F)
-
-#define RV_INSTRUCTION_RS2(inst) \
-    (((inst).value >> 20) & 0x1F)
-
-#define RV_INSTRUCTION_RS1(inst) \
-    (((inst).value >> 15) & 0x1F)
-
-#define RV_INSTRUCTION_RD(inst) \
-    (((inst).value >> 7) & 0x1F)
-
-#define RV_INSTRUCTION_FUNCT3(inst) \
-    (((inst).value >> 12) & 0x7)
-
-#define RV_INSTRUCTION_OPCODE(inst) \
-    (((inst.value) >> 0) & 0x7F)
-
 typedef union rv_instruction {
     uint32_t value;
 } rv_instruction;
@@ -86,7 +68,7 @@ typedef enum rv_operation {
     RV32I_CSRRCI,
 
     /* RV64I instruction */
-    RV64I_MUL,
+    RV64I_LWU,
     RV64I_LD,
     RV64I_SD,
     RV64I_SLLI,
@@ -101,6 +83,10 @@ typedef enum rv_operation {
     RV64I_SLLW,
     RV64I_SRLW,
     RV64I_SRAW,
+
+    /* Privilege instructions */
+    RV_SRET,
+    RV_MRET,
 } rv_operation;
 
 typedef struct rv_decoded_instruction {
@@ -160,7 +146,7 @@ static const rv_instruction_format rv_op_format_table[] = {
     [RV32I_CSRRCI]  = RV_I_TYPE,
 
     /* RV64I instructions */
-    [RV64I_MUL]     = RV_I_TYPE,
+    [RV64I_LWU]     = RV_I_TYPE,
     [RV64I_LD]      = RV_I_TYPE,
     [RV64I_SD]      = RV_S_TYPE,
     [RV64I_SLLI]    = RV_R_TYPE,
@@ -175,6 +161,9 @@ static const rv_instruction_format rv_op_format_table[] = {
     [RV64I_SLLW]    = RV_R_TYPE,
     [RV64I_SRLW]    = RV_R_TYPE,
     [RV64I_SRAW]    = RV_R_TYPE,
+
+    [RV_SRET]       = RV_I_TYPE,
+    [RV_MRET]       = RV_I_TYPE,
 };
 
 static const char *const rv_op_names[] = {
@@ -226,7 +215,7 @@ static const char *const rv_op_names[] = {
     [RV32I_CSRRWI]      = "CSRRWI",
     [RV32I_CSRRSI]      = "CSRRSI",
     [RV32I_CSRRCI]      = "CSRRCI",
-    [RV64I_MUL]         = "MUL",
+    [RV64I_LWU]         = "MUL",
     [RV64I_LD]          = "LD",
     [RV64I_SD]          = "SD",
     [RV64I_SLLI]        = "SLLI",
@@ -241,6 +230,9 @@ static const char *const rv_op_names[] = {
     [RV64I_SLLW]        = "SLLW",
     [RV64I_SRLW]        = "SRLW",
     [RV64I_SRAW]        = "SRAW",
+
+    [RV_SRET]           = "sret",
+    [RV_MRET]           = "mret",
 };
 
 #endif
