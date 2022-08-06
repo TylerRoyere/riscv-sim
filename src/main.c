@@ -8,7 +8,7 @@
 #include "execute.h"
 #include "elf.h"
 
-#define FAIL() exit(EXIT_FAILURE)\
+#define FAIL() exit(EXIT_FAILURE)
 
 static rv_cpu_state *running_state = NULL;
 
@@ -103,7 +103,9 @@ void run(rv_cpu_program program)
     running_state = &state;
 
     rv_decoded_instruction curr_inst;
-    rv_load_simple_program(&state, program);
+    if (rv_load_simple_program(&state, program)) {
+        FAIL();
+    }
     state.watchpoint = (rvi_register)program.tohost;
     state.action = on_watchpoint;
 

@@ -8,7 +8,7 @@
 #include "register.h"
 
 #ifndef MEMORY_SIZE
-#define MEMORY_SIZE (10 * 1024)
+#define MEMORY_SIZE (4 * 4 * 1024)
 #endif
 
 /* Cheat to get around addressing */

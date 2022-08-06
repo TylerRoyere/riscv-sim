@@ -3,7 +3,7 @@
 
 #include "cpu.h"
 
-void
+int
 rv_load_simple_program(rv_cpu_state *state, rv_cpu_program program)
 {
     printf("Loading program, length = %lu, offset = 0x%016lX\n",
@@ -13,10 +13,12 @@ rv_load_simple_program(rv_cpu_state *state, rv_cpu_program program)
         printf("Program size = %lu, Memory size = %lu\n",
                 program.length, sizeof(rv_memory));
         printf("Either reduce program size or increase memory size\n");
+        return 1;
     }
     memcpy(rv_memory, program.bytes, program.length);
     memory_vaddr_offset = program.vaddr_offset;
     state->rvi_pc = (rvi_register)program.entry_address;
+    return 0;
 }
 
 void

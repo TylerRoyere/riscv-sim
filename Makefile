@@ -14,7 +14,7 @@ OBJ_DIR :=build
 INC_DIR :=include
 CFLAGS :=-std=c99 -O3 -g -Wall -Wextra -Wpedantic -Wconversion -I$(INC_DIR)
 LDFLAGS :=$(USR_DEFS)
-CROSS_CFLAGS :=-mabi=lp64 -march=rv64g -mcmodel=medany -nostdlib -nostartfiles 
+CROSS_CFLAGS :=-mabi=lp64 -march=rv64g -mcmodel=medany -nostdlib -nostartfiles -Iprograms
 CROSS_LDFLAGS :=-static -T link.ld
 
 ######### Options #########
@@ -30,6 +30,8 @@ MAIN_SRCS :=$(notdir $(wildcard src/*.c))
 MAIN_OBJS :=$(foreach src, $(MAIN_SRCS), $(OBJ_DIR)/$(src:.c=.o))
 
 PROGRAM_SRCS :=$(notdir $(wildcard programs/*.c))
+PROGRAM_OBJS :=$(foreach src, $(PROGRAM_SRCS), $(src:.c=.o))
+PROGRAM_OBJS +=programs/entry/entry.o
 PROGRAM_EXES :=$(foreach src, $(PROGRAM_SRCS), $(src:.c=.bin))
 
 TARGETS :=main $(PROGRAM_EXES)
@@ -62,4 +64,4 @@ programs/%.o: programs/%.S
 clean:
 	rm -r $(OBJ_DIR)
 	rm $(TARGETS)
-	rm programs/*.o
+	rm $(PROGRAM_OBJS)

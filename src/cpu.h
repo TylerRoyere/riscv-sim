@@ -47,7 +47,7 @@ typedef struct rv_cpu_program {
 
 extern const char *const register_names[RV_NUM_REGS];
 
-void rv_load_simple_program(rv_cpu_state *state, rv_cpu_program program);
+int  rv_load_simple_program(rv_cpu_state *state, rv_cpu_program program);
 void rv_print_regs(rv_cpu_state *state);
 void rv_program_free(rv_cpu_program program);
 
