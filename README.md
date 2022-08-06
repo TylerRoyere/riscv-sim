@@ -7,15 +7,15 @@ The intent of this project is to learn about the RISC-V ISA by creating a progra
 ## Goals
 
 These pieces of functionality are ultimately desireable as they will allow a greater breadth of RISC-V programs and features to be exploited
-[x] - RV32I/RV64I base unprivileged integer intruction set
-[]  - RV32I/RV64I base privileged integer instruction set
-    []  - Proper CSR support
-    []  - Interrupt/Trap/Exception propogation and handling
-[]  - RV32/RV64 zifencei and zicsr standard extensions
-[]  - RV32M/RV64M multiplication and division standard extensions
-[]  - RV32A/RV64A atomic standard extensions
-[]  - RV32F/RV64F floating point standard extensions
-[]  - RV32D/RV64D double floating point stanard extensions
+- [x] RV32I/RV64I base unprivileged integer intruction set
+- []  RV32I/RV64I base privileged integer instruction set
+    - [] Proper CSR support
+    - [] Interrupt/Trap/Exception propogation and handling
+- [] RV32/RV64 zifencei and zicsr standard extensions
+- [] RV32M/RV64M multiplication and division standard extensions
+- [] RV32A/RV64A atomic standard extensions
+- [] RV32F/RV64F floating point standard extensions
+- [] RV32D/RV64D double floating point stanard extensions
 
 ## Build
 
