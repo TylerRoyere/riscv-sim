@@ -27,12 +27,12 @@ CROSS_LDFLAGS :=-static -T link.ld
 #CFLAGS +=-DRV32_ONLY=1 -DXLEN=32
 
 MAIN_SRCS :=$(notdir $(wildcard src/*.c))
-MAIN_OBJS :=$(foreach src, $(MAIN_SRCS), $(OBJ_DIR)/$(src:.c=.o))
+MAIN_OBJS :=$(foreach src,$(MAIN_SRCS),$(OBJ_DIR)/$(src:.c=.o))
 
 PROGRAM_SRCS :=$(notdir $(wildcard programs/*.c))
-PROGRAM_OBJS :=$(foreach src, $(PROGRAM_SRCS), $(src:.c=.o))
+PROGRAM_OBJS :=$(foreach src,$(PROGRAM_SRCS),programs/$(src:.c=.o))
 PROGRAM_OBJS +=programs/entry/entry.o
-PROGRAM_EXES :=$(foreach src, $(PROGRAM_SRCS), $(src:.c=.bin))
+PROGRAM_EXES :=$(foreach src,$(PROGRAM_SRCS),$(src:.c=.bin))
 
 TARGETS :=main $(PROGRAM_EXES)
 
@@ -62,6 +62,6 @@ programs/%.o: programs/%.S
 	$(CROSS_CC) $(CROSS_CFLAGS) -c -o $@ $<
 
 clean:
-	rm -r $(OBJ_DIR)
-	rm $(TARGETS)
-	rm $(PROGRAM_OBJS)
+	$(RM) -r $(OBJ_DIR)
+	$(RM) $(TARGETS)
+	$(RM) $(PROGRAM_OBJS)
