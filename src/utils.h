@@ -9,10 +9,15 @@
 #include "decode.h"
 #include "register.h"
 
-#define TODO(...) \
-    printf(__FILE__":%d  ", __LINE__);   \
-    printf("TODO: " __VA_ARGS__)
+#ifdef __GNUC__
+#define UNUSED __attribute__((unused))
+#else
+#define UNUSED
+#endif
 
+#define TODO(...) \
+    printf("%s %s:%d  ", __FILE__, __func__, __LINE__);   \
+    printf("TODO: " __VA_ARGS__)
 
 #define ZERO_EXTEND(val, type) \
     (type)(                                                 \

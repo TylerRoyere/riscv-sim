@@ -13,6 +13,7 @@ rv_pop_machine_privilege_stack(rv_cpu_state *state)
     rv_csr_write(RV_CSR_MSTATUS, state, mstatus);
     mstatus = RV_CSR_MSTATUS_SET(mstatus, MPP, RV_USER << 11);
     mstatus = RV_CSR_MSTATUS_SET(mstatus, MPRV, 0);
+    rv_csr_write(RV_CSR_MSTATUS, state, mstatus);
     return mpp;
 }
 
@@ -27,6 +28,7 @@ rv_pop_supervisor_privilege_stack(rv_cpu_state *state)
     rv_csr_write(RV_CSR_MSTATUS, state, mstatus);
     mstatus = RV_CSR_MSTATUS_SET(mstatus, SPP, RV_USER << 8);
     mstatus = RV_CSR_MSTATUS_SET(mstatus, MPRV, 0);
+    rv_csr_write(RV_CSR_MSTATUS, state, mstatus);
     return spp;
 }
 

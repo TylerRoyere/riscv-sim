@@ -1,10 +1,15 @@
 #include "fetch.h"
 
+void
+rv_print_pc(rv_cpu_state *state)
+{
+    printf("0x%08lX\n", (uint64_t)state->rvi_pc);
+}
+
 rv_instruction
 rv_fetch_instruction(rv_cpu_state *state)
 {
     rv_instruction inst;
-    printf("0x%08X ", (uint32_t)state->rvi_pc);
     inst.value = rv_memory_read32(state->rvi_pc);
     return inst;
 }

@@ -47,11 +47,16 @@ rv_execute_instruction(rv_decoded_instruction inst, rv_cpu_state *state)
 		RV32I_CASE(XORI);
 		RV32I_CASE(ORI);
 		RV32I_CASE(ANDI);
-/* Please note that these are actually RV64I instructions */
+
+#if defined(RV32_ONLY)
 		RV32I_CASE(SLLI);
 		RV32I_CASE(SRLI);
 		RV32I_CASE(SRAI);
-/**********************************************************/
+#else
+		RV64I_CASE(SLLI);
+		RV64I_CASE(SRLI);
+		RV64I_CASE(SRAI);
+#endif
 
 		RV32I_CASE(ADD);
 		RV32I_CASE(SUB);
@@ -77,11 +82,7 @@ rv_execute_instruction(rv_decoded_instruction inst, rv_cpu_state *state)
 		RV64I_CASE(LWU);
 		RV64I_CASE(LD);
 		RV64I_CASE(SD);
-#if 0
-		RV64I_CASE(SLLI);
-		RV64I_CASE(SRLI);
-		RV64I_CASE(SRAI);
-#endif
+
 		RV64I_CASE(ADDIW);
 		RV64I_CASE(SLLIW);
 		RV64I_CASE(SRLIW);

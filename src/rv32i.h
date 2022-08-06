@@ -34,20 +34,12 @@ void execute_SLTIU(rv_instruction inst, rv_cpu_state *state);
 void execute_XORI(rv_instruction inst, rv_cpu_state *state);
 void execute_ORI(rv_instruction inst, rv_cpu_state *state);
 void execute_ANDI(rv_instruction inst, rv_cpu_state *state);
-#if 0
-void execute_SLLI(rv_instruction inst, rv_cpu_state *state);
-void execute_SRLI(rv_instruction inst, rv_cpu_state *state);
-void execute_SRAI(rv_instruction inst, rv_cpu_state *state);
-#endif
 
 void execute_ADD(rv_instruction inst, rv_cpu_state *state);
 void execute_SUB(rv_instruction inst, rv_cpu_state *state);
-void execute_SLL(rv_instruction inst, rv_cpu_state *state);
 void execute_SLT(rv_instruction inst, rv_cpu_state *state);
 void execute_SLTU(rv_instruction inst, rv_cpu_state *state);
 void execute_XOR(rv_instruction inst, rv_cpu_state *state);
-void execute_SRL(rv_instruction inst, rv_cpu_state *state);
-void execute_SRA(rv_instruction inst, rv_cpu_state *state);
 void execute_OR(rv_instruction inst, rv_cpu_state *state);
 void execute_AND(rv_instruction inst, rv_cpu_state *state);
 
@@ -64,5 +56,13 @@ void execute_CSRRWI(rv_instruction inst, rv_cpu_state *state);
 void execute_CSRRSI(rv_instruction inst, rv_cpu_state *state);
 void execute_CSRRCI(rv_instruction inst, rv_cpu_state *state);
 
+#if defined(RV32_ONLY)
+void execute_SLLI(rv_instruction inst, rv_cpu_state *state);
+void execute_SRLI(rv_instruction inst, rv_cpu_state *state);
+void execute_SRAI(rv_instruction inst, rv_cpu_state *state);
+void execute_SLL(rv_instruction inst, rv_cpu_state *state);
+void execute_SRL(rv_instruction inst, rv_cpu_state *state);
+void execute_SRA(rv_instruction inst, rv_cpu_state *state);
+#endif
 
 #endif

@@ -1,4 +1,39 @@
+#include <string.h>
+#include <stdlib.h>
+
 #include "cpu.h"
+
+void
+rv_load_simple_program(rv_cpu_state *state, rv_cpu_program program)
+{
+    printf("Loading program, length = %lu, offset = 0x%016lX\n",
+            program.length, program.vaddr_offset);
+    if (program.length > sizeof(rv_memory)) {
+        printf("Program too large to load\n");
+        printf("Program size = %lu, Memory size = %lu\n",
+                program.length, sizeof(rv_memory));
+        printf("Either reduce program size or increase memory size\n");
+    }
+    memcpy(rv_memory, program.bytes, program.length);
+    memory_vaddr_offset = program.vaddr_offset;
+    state->rvi_pc = (rvi_register)program.entry_address;
+}
+
+void
+rv_program_free(rv_cpu_program program)
+{
+    free(program.bytes);
+}
+
+void
+rv_print_regs(rv_cpu_state *state)
+{
+    for (int ii = 0; ii < RV_NUM_REGS; ii++) {
+        printf("x%d = 0x%08x (%d)\n", ii,
+                (uint32_t)state->rvi_regs[ii], (int)state->rvi_regs[ii]);
+    }
+}
+
 
 const char *const register_names[RV_NUM_REGS] = {
     [0]     = "zero",

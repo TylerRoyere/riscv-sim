@@ -44,6 +44,9 @@ typedef enum rv_operation {
     RV32I_ORI,
     RV32I_ANDI,
     RV32I_SLLI,
+    /* This is the same instruction */
+    RV64I_SLLIW = RV32I_SLLI,
+
     RV32I_SRLI,
     RV32I_SRAI,
     RV32I_ADD,
@@ -75,7 +78,6 @@ typedef enum rv_operation {
     RV64I_SRLI,
     RV64I_SRAI,
     RV64I_ADDIW,
-    RV64I_SLLIW,
     RV64I_SRLIW,
     RV64I_SRAIW,
     RV64I_ADDW,
@@ -153,7 +155,6 @@ static const rv_instruction_format rv_op_format_table[] = {
     [RV64I_SRLI]    = RV_R_TYPE,
     [RV64I_SRAI]    = RV_R_TYPE,
     [RV64I_ADDIW]   = RV_I_TYPE,
-    [RV64I_SLLIW]   = RV_R_TYPE,
     [RV64I_SRLIW]   = RV_R_TYPE,
     [RV64I_SRAIW]   = RV_R_TYPE,
     [RV64I_ADDW]    = RV_R_TYPE,
@@ -192,7 +193,11 @@ static const char *const rv_op_names[] = {
     [RV32I_XORI]        = "XORI",
     [RV32I_ORI]         = "ORI",
     [RV32I_ANDI]        = "ANDI",
+#if defined(RV32_ONLY)
     [RV32I_SLLI]        = "SLLI",
+#else
+    [RV64I_SLLIW]       = "SLLIW",
+#endif
     [RV32I_SRLI]        = "SRLI",
     [RV32I_SRAI]        = "SRAI",
     [RV32I_ADD]         = "ADD",
@@ -222,7 +227,6 @@ static const char *const rv_op_names[] = {
     [RV64I_SRLI]        = "SRLI",
     [RV64I_SRAI]        = "SRAI",
     [RV64I_ADDIW]       = "ADDIW",
-    [RV64I_SLLIW]       = "SLLIW",
     [RV64I_SRLIW]       = "SRLIW",
     [RV64I_SRAIW]       = "SRAIW",
     [RV64I_ADDW]        = "ADDW",

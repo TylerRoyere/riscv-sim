@@ -14,7 +14,7 @@
     exit(EXIT_FAILURE); \
 } while (0)
 
-#define BIT_SET(x, bit) (!!((uint32_t)(x) & (uint32_t)(1 << bit)))
+#define BIT_SET(x, bit) (!!((uint32_t)(x) & (uint32_t)(1ul << bit)))
 
 rvi_register
 rv_i_type_immediate(rv_instruction inst)

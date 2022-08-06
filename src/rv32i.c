@@ -119,6 +119,7 @@ execute_LB(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_I_TYPE(inst, offset, rs, rd);
     rvi_register address = rvi_reg_read(state, rs) + offset;
+    rv_cpu_check_watchpoint(state, address, 1);
     int8_t value = (int8_t)rv_memory_read8(address);
     rvi_reg_write(state, rd, (rvi_register)value);
 }
@@ -128,6 +129,7 @@ execute_LH(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_I_TYPE(inst, offset, rs, rd);
     rvi_register address = rvi_reg_read(state, rs) + offset;
+    rv_cpu_check_watchpoint(state, address, 2);
     int16_t value = (int16_t)rv_memory_read16(address);
     rvi_reg_write(state, rd, (rvi_register)value);
 }
@@ -137,7 +139,9 @@ execute_LW(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_I_TYPE(inst, offset, rs, rd);
     rvi_register address = rvi_reg_read(state, rs) + offset;
-    rvi_reg_write(state, rd, rv_memory_read32(address));
+    rv_cpu_check_watchpoint(state, address, 4);
+    int32_t value = (int32_t)rv_memory_read32(address);
+    rvi_reg_write(state, rd, (rvi_register)value);
 }
 
 void
@@ -145,6 +149,7 @@ execute_LBU(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_I_TYPE(inst, offset, rs, rd);
     rvi_register address = rvi_reg_read(state, rs) + offset;
+    rv_cpu_check_watchpoint(state, address, 1);
     uint8_t value = rv_memory_read8(address);
     rvi_reg_write(state, rd, (rvi_register)value);
 }
@@ -154,6 +159,7 @@ execute_LHU(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_I_TYPE(inst, offset, rs, rd);
     rvi_register address = rvi_reg_read(state, rs) + offset;
+    rv_cpu_check_watchpoint(state, address, 2);
     uint16_t value = rv_memory_read16(address);
     rvi_reg_write(state, rd, (rvi_register)value);
 }
@@ -163,6 +169,7 @@ execute_SB(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_S_TYPE(inst, offset, src, base);
     rvi_register address = rvi_reg_read(state, base) + offset;
+    rv_cpu_check_watchpoint(state, address, 1);
     uint8_t value = (uint8_t)(rvi_reg_read(state, src) & 0xFF);
     rv_memory_write8(address, value);
 }
@@ -172,6 +179,7 @@ execute_SH(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_S_TYPE(inst, offset, src, base);
     rvi_register address = rvi_reg_read(state, base) + offset;
+    rv_cpu_check_watchpoint(state, address, 2);
     uint16_t value = (uint16_t)(rvi_reg_read(state, src) & 0xFFFF);
     rv_memory_write16(address, value);
 }
@@ -181,6 +189,7 @@ execute_SW(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_S_TYPE(inst, offset, src, base);
     rvi_register address = rvi_reg_read(state, base) + offset;
+    rv_cpu_check_watchpoint(state, address, 4);
     uint32_t value = (uint32_t)(rvi_reg_read(state, src) & 0xFFFFFFFF);
     rv_memory_write32(address, value);
 }
@@ -234,35 +243,6 @@ execute_ANDI(rv_instruction inst, rv_cpu_state *state)
     rvi_reg_write(state, rd, value);
 }
 
-#if 0
-void
-execute_SLLI(rv_instruction inst, rv_cpu_state *state)
-{
-    UNPACK_I_TYPE(inst, immediate, rs, rd);
-    rvi_register shamt = GET_SHAMT(immediate);
-    rvi_register value = rvi_reg_read(state, rs) << shamt;
-    rvi_reg_write(state, rd, value);
-}
-
-void
-execute_SRLI(rv_instruction inst, rv_cpu_state *state)
-{
-    UNPACK_I_TYPE(inst, immediate, rs, rd);
-    rvi_register shamt = GET_SHAMT(immediate);
-    rvi_register_unsigned value = rvi_reg_read_unsigned(state, rs) >> shamt;
-    rvi_reg_write(state, rd, (rvi_register)value);
-}
-
-void
-execute_SRAI(rv_instruction inst, rv_cpu_state *state)
-{
-    UNPACK_I_TYPE(inst, immediate, rs, rd);
-    rvi_register shamt = GET_SHAMT(immediate);
-    rvi_register value = rvi_reg_read(state, rs) >> shamt;
-    rvi_reg_write(state, rd, value);
-}
-#endif
-
 void
 execute_ADD(rv_instruction inst, rv_cpu_state *state)
 {
@@ -276,15 +256,6 @@ execute_SUB(rv_instruction inst, rv_cpu_state *state)
 {
     UNPACK_R_TYPE(inst, rs1, rs2, rd);
     rvi_register result = rvi_reg_read(state, rs1) - rvi_reg_read(state, rs2);
-    rvi_reg_write(state, rd, result);
-}
-
-void
-execute_SLL(rv_instruction inst, rv_cpu_state *state)
-{
-    UNPACK_R_TYPE(inst, rs1, rs2, rd);
-    rvi_register shamt = rvi_reg_read(state, rs2) & 0x1F;
-    rvi_register result = rvi_reg_read(state, rs1) << shamt;
     rvi_reg_write(state, rd, result);
 }
 
@@ -313,23 +284,6 @@ execute_XOR(rv_instruction inst, rv_cpu_state *state)
     rvi_reg_write(state, rd, result);
 }
 
-void
-execute_SRL(rv_instruction inst, rv_cpu_state *state)
-{
-    UNPACK_R_TYPE(inst, rs1, rs2, rd);
-    rvi_register shamt = rvi_reg_read(state, rs2) & 0x1F;
-    rvi_register_unsigned result = rvi_reg_read_unsigned(state, rs1) >> shamt;
-    rvi_reg_write(state, rd, (rvi_register)result);
-}
-
-void
-execute_SRA(rv_instruction inst, rv_cpu_state *state)
-{
-    UNPACK_R_TYPE(inst, rs1, rs2, rd);
-    rvi_register shamt = rvi_reg_read(state, rs2) & 0x1F;
-    rvi_register result = rvi_reg_read(state, rs1) >> shamt;
-    rvi_reg_write(state, rd, result);
-}
 
 void
 execute_OR(rv_instruction inst, rv_cpu_state *state)
@@ -467,4 +421,63 @@ execute_CSRRCI(rv_instruction inst, rv_cpu_state *state)
         rv_csr_clear_bits(address, state, mask);
     }
 }
+
+
+#if defined(RV32_ONLY)
+void
+execute_SLLI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rvi_register shamt = GET_SHAMT(immediate);
+    rvi_register value = rvi_reg_read(state, rs) << shamt;
+    rvi_reg_write(state, rd, value);
+}
+
+void
+execute_SRLI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rvi_register shamt = GET_SHAMT(immediate);
+    rvi_register_unsigned value = rvi_reg_read_unsigned(state, rs) >> shamt;
+    rvi_reg_write(state, rd, (rvi_register)value);
+}
+
+void
+execute_SRAI(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_I_TYPE(inst, immediate, rs, rd);
+    rvi_register shamt = GET_SHAMT(immediate);
+    rvi_register value = rvi_reg_read(state, rs) >> shamt;
+    rvi_reg_write(state, rd, value);
+}
+
+
+void
+execute_SLL(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_R_TYPE(inst, rs1, rs2, rd);
+    rvi_register shamt = rvi_reg_read(state, rs2) & 0x1F;
+    rvi_register result = rvi_reg_read(state, rs1) << shamt;
+    rvi_reg_write(state, rd, result);
+}
+
+void
+execute_SRL(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_R_TYPE(inst, rs1, rs2, rd);
+    rvi_register shamt = rvi_reg_read(state, rs2) & 0x1F;
+    rvi_register_unsigned result = rvi_reg_read_unsigned(state, rs1) >> shamt;
+    rvi_reg_write(state, rd, (rvi_register)result);
+}
+
+void
+execute_SRA(rv_instruction inst, rv_cpu_state *state)
+{
+    UNPACK_R_TYPE(inst, rs1, rs2, rd);
+    rvi_register shamt = rvi_reg_read(state, rs2) & 0x1F;
+    rvi_register result = rvi_reg_read(state, rs1) >> shamt;
+    rvi_reg_write(state, rd, result);
+}
+#endif
+
 

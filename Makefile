@@ -2,8 +2,17 @@ CC ?=cc
 USR_DEFS ?=
 OBJ_DIR :=build
 INC_DIR :=include
-CFLAGS :=-std=c99 -g -Wall -Wextra -Wpedantic -Wconversion -I$(INC_DIR)
+CFLAGS :=-std=c99 -O3 -g -Wall -Wextra -Wpedantic -Wconversion -I$(INC_DIR)
 LDFLAGS :=$(USR_DEFS)
+
+######### Options #########
+# Sanitizers
+#CFLAGS +=-fsanitize=address
+#CFLAGS +=-fsanitize=leak
+#CFLAGS +=-fsanitize=thread
+#CFLAGS +=-fsanitize=undefined
+# Set to enable only RV32
+#CFLAGS +=-DRV32_ONLY=1 -DXLEN=32
 
 MAIN_SRCS :=$(notdir $(wildcard src/*.c))
 MAIN_OBJS :=$(foreach src, $(MAIN_SRCS), $(OBJ_DIR)/$(src:.c=.o))

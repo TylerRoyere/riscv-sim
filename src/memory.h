@@ -11,11 +11,14 @@
 #define MEMORY_SIZE (10 * 1024)
 #endif
 
+/* Cheat to get around addressing */
+extern uint64_t memory_vaddr_offset;
 extern uint8_t rv_memory[MEMORY_SIZE];
 
 static inline uint8_t
 rv_memory_read8(rvi_register index)
 {
+    index = index - (rvi_register)memory_vaddr_offset;
     assert(index < MEMORY_SIZE);
     return rv_memory[index];
 }
@@ -44,6 +47,7 @@ rv_memory_read64(rvi_register index)
 static inline void
 rv_memory_write8(rvi_register index, uint8_t value)
 {
+    index = index - (rvi_register)memory_vaddr_offset;
     //printf("index = %ld\n", index);
     assert(index < MEMORY_SIZE);
     rv_memory[index] = value;

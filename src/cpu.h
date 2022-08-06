@@ -23,15 +23,33 @@ typedef enum rv_cpu_privilege {
     RV_MACHINE      = 0x3,
 } rv_cpu_privilege;
 
+struct rv_cpu_state;
+typedef void (*watch_action)(struct rv_cpu_state *state);
+
 typedef struct rv_cpu_state {
     rvi_register        rvi_regs[RV_NUM_REGS];
     rvi_register        rvi_pc;
     rv_csr_state        csrs;
     rv_cpu_flag         flags;
     rv_cpu_privilege    privilege;
+    rvi_register        watchpoint;
+    watch_action        action;
 } rv_cpu_state;
 
+typedef struct rv_cpu_program {
+    /* Special memory address for testing */
+    uint64_t tohost;
+    uint64_t entry_address;
+    uint64_t vaddr_offset;
+    uint64_t length;
+    uint8_t *bytes;
+} rv_cpu_program;
+
 extern const char *const register_names[RV_NUM_REGS];
+
+void rv_load_simple_program(rv_cpu_state *state, rv_cpu_program program);
+void rv_print_regs(rv_cpu_state *state);
+void rv_program_free(rv_cpu_program program);
 
 static inline void
 rv_cpu_set_flag(rv_cpu_state *state, rv_cpu_flag flag)
@@ -51,16 +69,6 @@ rv_cpu_flag_is_set(rv_cpu_state *state, rv_cpu_flag flag)
     return !!(state->flags & flag);
 }
 
-
-static inline void
-rv_load_simple_program(rv_cpu_state *state, const uint8_t *bytes, uint64_t length)
-{
-    for (uint64_t ii = 0; ii < length; ii++) {
-        rv_memory[ii] = bytes[ii];
-    }
-
-    state->rvi_pc = 0;
-}
 
 static inline rvi_register
 rvi_reg_read(rv_cpu_state *state, uint8_t reg)
@@ -86,13 +94,12 @@ rvi_reg_write(rv_cpu_state *state, uint8_t reg, rvi_register value)
 }
 
 static inline void
-rv_print_regs(rv_cpu_state *state)
+rv_cpu_check_watchpoint(rv_cpu_state *state, rvi_register address, int length)
 {
-    for (int ii = 0; ii < RV_NUM_REGS; ii++) {
-        printf("x%d = 0x%08x (%d)\n", ii,
-                (uint32_t)state->rvi_regs[ii], (int)state->rvi_regs[ii]);
+    if (address <= state->watchpoint &&
+            (address + length) > state->watchpoint) {
+        state->action(state);
     }
 }
-
 
 #endif
