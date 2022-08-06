@@ -53,7 +53,6 @@ read_file(const char *filename)
     tohost = tohost_symbol.symbol.st_value;
     if (!tohost_symbol.found) {
         printf("Unable to find \"tohost\" symbol\n");
-        return result;
     }
     else {
         printf("Found \"tohost\" with value %016lX\n", tohost);

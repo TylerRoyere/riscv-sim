@@ -467,6 +467,7 @@ rv_print_decoded_instruction(rv_decoded_instruction inst)
             break;
         default:
             printf("Invalid instruction\n");
+            print_binary(inst.format.value, 32);
             break;
     }
 }

@@ -4,7 +4,8 @@
 #include <stdint.h>
 
 typedef enum rv_instruction_format {
-    RV_R_TYPE = 0,
+    RV_NO_TYPE = 0,
+    RV_R_TYPE,
     RV_I_TYPE,
     RV_S_TYPE,
     RV_B_TYPE,
