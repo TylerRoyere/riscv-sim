@@ -1,3 +1,4 @@
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include "elf.h"
@@ -26,16 +27,28 @@
       ((((uint64_t)x) & 0x00FF000000000000) >> 40) |  \
       ((((uint64_t)x) & 0xFF00000000000000) >> 56)   ))
 
-#define machine_bigendian ((*((char*)(int [1]){1}) == 0))
-#define ENDIANNESS_DIFFERS(e_ident_array)   \
-    ((e_ident_array[EI_DATA] == ELFDATA2MSB) != machine_bigendian)
+typedef unsigned char ident_array[EI_NIDENT];
+
+static inline int
+elf_do_bswap(ident_array e_ident)
+{
+    int native_be = (*((char*)(int [1]){1}) == 0);
+    int elf_be = e_ident[EI_DATA] == ELFDATA2MSB;
+    return native_be != elf_be;
+}
+
+static const char *check_ident(ident_array e_ident);
+static elf_conversions choose_elf_conversion(ident_array e_ident);
+
+static const char *check_elf_header(Elf64_Ehdr hdr);
+static const char *check_symtab_header(elf_program prog, Elf64_Shdr symtab);
 
 static elf_program read_elf_header(FILE *infile);
 static elf_program read_program_headers(FILE *infile, elf_program prog);
 static elf_program read_section_headers(FILE *infile, elf_program prog);
 
-static elf_program read_elf_header_machine(FILE *infile,
-        const unsigned char[EI_NIDENT]);
+static elf_program read_elf_header_machine(FILE *infile, elf_program prog,
+        const ident_array e_ident);
 
 static const char *read_one_program_header(FILE *infile,
         elf_program prog, Elf64_Phdr *out);
@@ -62,28 +75,29 @@ static elf_memory read_memory_segment(FILE *infile,
 static elf_program memory_map_add_segment(elf_program prog,
         elf_memory segment);
 
-static Elf32_Ehdr convert_header32_endian(Elf32_Ehdr hdr);
-static Elf64_Ehdr convert_header64_endian(Elf64_Ehdr hdr);
-static Elf64_Ehdr convert_header32to64(Elf32_Ehdr hdr);
+static Elf64_Ehdr Ehdr32to64_bswap(void *);
+static Elf64_Ehdr Ehdr32to64(void *);
+static Elf64_Ehdr Ehdr64to64_bswap(void *);
+static Elf64_Ehdr Ehdr64to64(void *);
 
-static Elf32_Phdr convert_pheader32_endian(Elf32_Phdr hdr);
-static Elf64_Phdr convert_pheader64_endian(Elf64_Phdr hdr);
-static Elf64_Phdr convert_pheader32to64(Elf32_Phdr hdr);
+static Elf64_Phdr Phdr32to64_bswap(void *);
+static Elf64_Phdr Phdr32to64(void *);
+static Elf64_Phdr Phdr64to64_bswap(void *);
+static Elf64_Phdr Phdr64to64(void *);
 
-static Elf32_Shdr convert_sheader32_endian(Elf32_Shdr hdr);
-static Elf64_Shdr convert_sheader64_endian(Elf64_Shdr hdr);
-static Elf64_Shdr convert_sheader32to64(Elf32_Shdr hdr);
+static Elf64_Shdr Shdr32to64_bswap(void *);
+static Elf64_Shdr Shdr32to64(void *);
+static Elf64_Shdr Shdr64to64_bswap(void *);
+static Elf64_Shdr Shdr64to64(void *);
 
-static Elf32_Sym convert_symbol32_endian(Elf32_Sym sym);
-static Elf64_Sym convert_symbol64_endian(Elf64_Sym sym);
-static Elf64_Sym convert_symbol32to64(Elf32_Sym sym);
+static Elf64_Sym Sym32to64_bswap(void *);
+static Elf64_Sym Sym32to64(void *);
+static Elf64_Sym Sym64to64_bswap(void *);
+static Elf64_Sym Sym64to64(void *);
 
 static void print_elf_header(Elf64_Ehdr hdr);
 static void print_program_header(Elf64_Phdr hdr);
 static void print_section_header(Elf64_Shdr hdr);
-
-static const char *check_ident(unsigned char e_ident[EI_NIDENT]);
-static const char *check_elf_header(Elf64_Ehdr hdr);
 
 elf_program
 elf_load(const char *path)
@@ -107,6 +121,29 @@ elf_load(const char *path)
     }
 
     return prog;
+}
+
+#define CONVERSION_FUNCS(bits1, bits2, bswap)           \
+{                                                       \
+    .to_ehdr = Ehdr ## bits1 ## to ## bits2 ## bswap,   \
+    .to_phdr = Phdr ## bits1 ## to ## bits2 ## bswap,   \
+    .to_shdr = Shdr ## bits1 ## to ## bits2 ## bswap,   \
+    .to_sym  = Sym ## bits1 ## to ## bits2 ## bswap,    \
+}
+
+static elf_conversions
+choose_elf_conversion(ident_array e_ident)
+{
+    int is32 = e_ident[EI_CLASS] == ELFCLASS32;
+    int do_bswap = elf_do_bswap(e_ident);
+    static const elf_conversions conversions_lookup[2][2] = {
+        [0][0] = CONVERSION_FUNCS(64, 64,),
+        [0][1] = CONVERSION_FUNCS(64, 64, _bswap),
+        [1][0] = CONVERSION_FUNCS(32, 64,),
+        [1][1] = CONVERSION_FUNCS(32, 64, _bswap),
+    };
+
+    return conversions_lookup[is32][do_bswap];
 }
 
 void
@@ -155,7 +192,7 @@ static elf_program
 read_elf_header(FILE *infile)
 {
     elf_program prog;
-    unsigned char e_ident[EI_NIDENT];
+    ident_array e_ident;
     size_t nread = 0;
 
     nread = fread(e_ident, sizeof(e_ident[0]), EI_NIDENT, infile);
@@ -171,8 +208,9 @@ read_elf_header(FILE *infile)
 
     TODO("Ignoring EI_OSABI and EI_ABIVERSION for now!\n");
 
+    prog.convert = choose_elf_conversion(e_ident);
 
-    prog = read_elf_header_machine(infile, e_ident);
+    prog = read_elf_header_machine(infile, prog, e_ident);
     prog.error = check_elf_header(prog.elf_header);
     return prog;
 }
@@ -180,7 +218,11 @@ read_elf_header(FILE *infile)
 static elf_program
 read_program_headers(FILE *infile, elf_program prog)
 {
-    if (prog.error) {
+    if (prog.error || prog.elf_header.e_phnum == 0) {
+        return prog;
+    }
+
+    if (prog.elf_header.e_phnum == 0) {
         return prog;
     }
 
@@ -196,14 +238,15 @@ read_program_headers(FILE *infile, elf_program prog)
         return prog;
     }
 
-    Elf64_Phdr *phdrs = malloc(sizeof(Elf64_Phdr) * prog.elf_header.e_phnum);
+    Elf64_Phdr *phdrs = calloc(prog.elf_header.e_phnum, sizeof(Elf64_Phdr));
 
     if (phdrs == NULL) {
         prog.error = "Failed to allocate storage for program headers";
         return prog;
     }
 
-    for (uint64_t ii = 0; ii < prog.elf_header.e_phnum; ii++) {
+    for (size_t ii = 0; ii < prog.elf_header.e_phnum; ii++) {
+        phdrs[ii] = (Elf64_Phdr) {0};
         prog.error = read_one_program_header(infile, prog, &phdrs[ii]);
         if (prog.error) {
             free(phdrs);
@@ -220,7 +263,7 @@ read_program_headers(FILE *infile, elf_program prog)
 static elf_program
 read_section_headers(FILE *infile, elf_program prog)
 {
-    if (prog.error) {
+    if (prog.error || prog.elf_header.e_shnum == 0) {
         return prog;
     }
 
@@ -236,14 +279,14 @@ read_section_headers(FILE *infile, elf_program prog)
         return prog;
     }
 
-    Elf64_Shdr *shdrs = malloc(sizeof(Elf64_Shdr) * prog.elf_header.e_shnum);
+    Elf64_Shdr *shdrs = calloc(prog.elf_header.e_shnum, sizeof(Elf64_Shdr));
 
     if (shdrs == NULL) {
         prog.error = "Failed to allocate storage for section headers";
         return prog;
     }
 
-    for (uint64_t ii = 0; ii < prog.elf_header.e_shnum; ii++) {
+    for (size_t ii = 0; ii < prog.elf_header.e_shnum; ii++) {
         if (ii != SHN_UNDEF && (ii < SHN_LORESERVE || ii > SHN_HIRESERVE)) {
             prog.error = read_one_section_header(infile, prog, &shdrs[ii]);
             if (prog.error) {
@@ -253,7 +296,7 @@ read_section_headers(FILE *infile, elf_program prog)
             }
         }
         else {
-            memset(&shdrs[ii], 0, sizeof(shdrs[ii]));
+            shdrs[ii] = (Elf64_Shdr) {0};
         }
     }
 
@@ -347,6 +390,7 @@ load_section_segments(FILE *infile, elf_program prog)
 static elf_program
 load_symbol_table(FILE *infile, elf_program prog, size_t tab_index)
 {
+    uint8_t temp_sym[sizeof(Elf64_Sym)];
     if (prog.error) {
         return prog;
     }
@@ -357,13 +401,17 @@ load_symbol_table(FILE *infile, elf_program prog, size_t tab_index)
         return prog;
     }
 
+    prog.error = check_symtab_header(prog, symtab);
+    if (prog.error) {
+        return prog;
+    }
+
     if (fseek(infile, (long)symtab.sh_offset, SEEK_SET)) {
         prog.error = "Unable to move file position to symbol table";
         return prog;
     }
 
     size_t num_symbols = symtab.sh_size / symtab.sh_entsize;
-    int do_bswap = ENDIANNESS_DIFFERS(prog.elf_header.e_ident);
     Elf64_Sym *table = malloc(num_symbols * sizeof(*table));
 
     if (table == NULL) {
@@ -371,45 +419,16 @@ load_symbol_table(FILE *infile, elf_program prog, size_t tab_index)
         return prog;
     }
 
-    if (prog.elf_header.e_ident[EI_CLASS] == ELFCLASS32) {
-        Elf32_Sym sym;
-        for (size_t ii = 0; ii < num_symbols; ii++) {
-
-            if (fread(&sym, 1, sizeof(sym), infile) != sizeof(sym)) {
-                prog.error = "Failed to read Elf32_Sym from file";
-                free(table);
-                return prog;
-            }
-
-            if (do_bswap) {
-                sym = convert_symbol32_endian(sym);
-            }
-
-            table[ii] = convert_symbol32to64(sym);
+    for (size_t ii = 0; ii < num_symbols; ii++) {
+        if (fread(&temp_sym, 1, sizeof(temp_sym), infile) != sizeof(temp_sym)) {
+            prog.error = "Failed to read Elf32_Sym from file";
+            free(table);
+            return prog;
         }
-    }
-    else if (prog.elf_header.e_ident[EI_CLASS] == ELFCLASS64) {
-        Elf64_Sym sym;
-        for (size_t ii = 0; ii < num_symbols; ii++) {
 
-            if (fread(&sym, 1, sizeof(sym), infile) != sizeof(sym)) {
-                prog.error = "Failed to read Elf64_Sym from file";
-                free(table);
-                return prog;
-            }
-
-            if (do_bswap) {
-                sym = convert_symbol64_endian(sym);
-            }
-
-            table[ii] = sym;
-        }
+        table[ii] = prog.convert.to_sym(&temp_sym);
     }
-    else {
-        free(table);
-        prog.error = "Unknown elfclass";
-        return prog;
-    }
+
     prog.symbols = table;
     prog.num_symbols = num_symbols;
     return prog;
@@ -626,7 +645,7 @@ memory_map_add_segment(elf_program prog, elf_memory segment)
 }
 
 static const char *
-check_ident(unsigned char e_ident[EI_NIDENT])
+check_ident(ident_array e_ident)
 {
     if (e_ident[EI_MAG0] != ELFMAG0 ||
             e_ident[EI_MAG1] != ELFMAG1 ||
@@ -637,12 +656,12 @@ check_ident(unsigned char e_ident[EI_NIDENT])
 
     if (e_ident[EI_CLASS] != ELFCLASS32 &&
             e_ident[EI_CLASS] != ELFCLASS64) {
-        return "Invalid ELFCLASS";
+        return "Unsupported ELFCLASS";
     }
 
     if (e_ident[EI_DATA] != ELFDATA2LSB &&
             e_ident[EI_DATA] != ELFDATA2MSB) {
-        return "Invalid data format";
+        return "Unsupported data format";
     }
 
     if (e_ident[EI_VERSION] != EV_CURRENT) {
@@ -664,13 +683,46 @@ check_elf_header(Elf64_Ehdr hdr)
         return "Invalid machine type, RISC-V uses EM_RISCV";
     }
 
+    if (hdr.e_ident[EI_CLASS] == ELFCLASS32) {
+        if (hdr.e_ehsize != sizeof(Elf32_Ehdr))
+            return "Actual elf header size doesn't match expected";
+        if (hdr.e_phentsize != sizeof(Elf32_Phdr))
+            return "Actual Program header size doesn't match expected";
+        if (hdr.e_shentsize != sizeof(Elf32_Shdr))
+            return "Actual Section header size doesn't match expected";
+    }
+    else {
+        if (hdr.e_ehsize != sizeof(Elf64_Ehdr))
+            return "Actual elf header size doesn't match expected";
+        if (hdr.e_phentsize != sizeof(Elf64_Phdr))
+            return "Actual Program header size doesn't match expected";
+        if (hdr.e_shentsize != sizeof(Elf64_Shdr))
+            return "Actual Section header size doesn't match expected";
+    }
+
+    return NULL;
+}
+
+static const char *
+check_symtab_header(elf_program prog, Elf64_Shdr symtab)
+{
+    if (prog.elf_header.e_ident[EI_CLASS] == ELFCLASS32) {
+        if (symtab.sh_entsize != sizeof(Elf32_Sym))
+            return "Actual symtab entsize doesn't match expected";
+    }
+    else {
+        if (symtab.sh_entsize != sizeof(Elf64_Sym))
+            return "Actual symtab entsize doesn't match expected";
+    }
     return NULL;
 }
 
 static elf_program
-read_elf_header_machine(FILE *infile, const unsigned char e_ident[EI_NIDENT])
+read_elf_header_machine(FILE *infile, elf_program prog,
+        const ident_array e_ident)
 {
-    elf_program prog = {0};
+    uint8_t temp[sizeof(Elf64_Ehdr)];
+    unsigned int size = 0;
 
     if (fseek(infile, 0, SEEK_SET)) {
         prog.error = "Unable to move file position";
@@ -678,31 +730,20 @@ read_elf_header_machine(FILE *infile, const unsigned char e_ident[EI_NIDENT])
     }
         
     if (e_ident[EI_CLASS] == ELFCLASS32) {
-        Elf32_Ehdr temp_hdr;
-        if (fread(&temp_hdr, 1, sizeof(temp_hdr), infile) != sizeof(temp_hdr)) {
-            prog.error = "Failed to read Elf32_Ehdr header";
-            return prog;
-        }
-
-        if (ENDIANNESS_DIFFERS(e_ident)) {
-            temp_hdr = convert_header32_endian(temp_hdr);
-        }
-        
-        prog.elf_header = convert_header32to64(temp_hdr);
+        size = sizeof(Elf32_Ehdr);
     }
     else {
-        Elf64_Ehdr temp_hdr;
-        if (fread(&temp_hdr, 1, sizeof(temp_hdr), infile) != sizeof(temp_hdr)) {
-            prog.error = "Failed to read Elf64_Ehdr header";
-            return prog;
-        }
-
-        if (ENDIANNESS_DIFFERS(e_ident)) {
-            temp_hdr = convert_header64_endian(temp_hdr);
-        }
-
-        prog.elf_header = temp_hdr;
+        size = sizeof(Elf64_Ehdr);
     }
+
+    assert(size >= sizeof(temp));
+
+    if (fread(&temp, 1, size, infile) != size) {
+        prog.error = "Failed to read Elf64_Ehdr header";
+        return prog;
+    }
+
+    prog.elf_header = prog.convert.to_ehdr((void*)&temp);
 
     return prog;
 }
@@ -710,83 +751,45 @@ read_elf_header_machine(FILE *infile, const unsigned char e_ident[EI_NIDENT])
 static const char *
 read_one_program_header(FILE *infile, elf_program prog, Elf64_Phdr *out)
 {
+    uint8_t temp_hdr[sizeof(Elf64_Phdr)];
+    uint32_t phdr_size = prog.elf_header.e_phentsize;
     if (prog.error) {
         return prog.error;
     }
 
-    if (prog.elf_header.e_phentsize == sizeof(Elf32_Phdr)) {
-        Elf32_Phdr temp_hdr;
+    assert(phdr_size <= sizeof(temp_hdr) && 
+            "Program header size larger than largest expected size");
 
-        if (fread(&temp_hdr, 1, sizeof(temp_hdr), infile) != sizeof(temp_hdr)) {
-            return "Failed to read program header Elf32_Phdr";
-        }
-
-        if (ENDIANNESS_DIFFERS(prog.elf_header.e_ident)) {
-            temp_hdr = convert_pheader32_endian(temp_hdr);
-        }
-        
-        *out = convert_pheader32to64(temp_hdr);
+    if (fread(&temp_hdr, 1, phdr_size, infile) != phdr_size) {
+        return "Failed to read program header Elf32_Phdr";
     }
-    else if (prog.elf_header.e_phentsize == sizeof(Elf64_Phdr)) {
-        Elf64_Phdr temp_hdr;
 
-        if (fread(&temp_hdr, 1, sizeof(temp_hdr), infile) != sizeof(temp_hdr)) {
-            return "Failed to read program header Elf64_Phdr";
-        }
-
-        if (ENDIANNESS_DIFFERS(prog.elf_header.e_ident)) {
-            temp_hdr = convert_pheader64_endian(temp_hdr);
-        }
-
-        *out = temp_hdr;
-    }
-    else {
-        return "Unknown program header size specified in elf header";
-    }
+    *out = prog.convert.to_phdr(&temp_hdr);
     return NULL;
 }
 
 static const char *
 read_one_section_header(FILE *infile, elf_program prog, Elf64_Shdr *out)
 {
+    uint8_t temp_hdr[sizeof(Elf64_Shdr)];
+    uint32_t shdr_size = prog.elf_header.e_shentsize;
     if (prog.error) {
         return prog.error;
     }
 
-    if (prog.elf_header.e_shentsize == sizeof(Elf32_Shdr)) {
-        Elf32_Shdr temp_hdr;
+    assert(shdr_size <= sizeof(temp_hdr) &&
+            "Section header size larger than largest expected size");
 
-        if (fread(&temp_hdr, 1, sizeof(temp_hdr), infile) != sizeof(temp_hdr)) {
-            return "Failed to read program header Elf32_Shdr";
-        }
-
-        if (ENDIANNESS_DIFFERS(prog.elf_header.e_ident)) {
-            temp_hdr = convert_sheader32_endian(temp_hdr);
-        }
-
-        *out = convert_sheader32to64(temp_hdr);
+    if (fread(&temp_hdr, 1, shdr_size, infile) != shdr_size) {
+        return "Failed to read program header Elf32_Shdr";
     }
-    else if (prog.elf_header.e_shentsize == sizeof(Elf64_Shdr)) {
-        Elf64_Shdr temp_hdr;
 
-        if (fread(&temp_hdr, 1, sizeof(temp_hdr), infile) != sizeof(temp_hdr)) {
-            return "Failed to read program header Elf64_Shdr";
-        }
-
-        if (ENDIANNESS_DIFFERS(prog.elf_header.e_ident)) {
-            temp_hdr = convert_sheader64_endian(temp_hdr);
-        }
-
-        *out = temp_hdr;
-    }
-    else {
-        return "Unknown program header size specified in elf header";
-    }
+    *out = prog.convert.to_shdr(&temp_hdr);
     return NULL;
 }
 
 static Elf32_Ehdr
-convert_header32_endian(Elf32_Ehdr hdr)
+Elf32_Ehdr_bswap(Elf32_Ehdr hdr)
 {
     hdr.e_type      = BSWAP16(hdr.e_type);
     hdr.e_machine   = BSWAP16(hdr.e_type);
@@ -806,7 +809,7 @@ convert_header32_endian(Elf32_Ehdr hdr)
 }
 
 static Elf32_Phdr
-convert_pheader32_endian(Elf32_Phdr hdr)
+Elf32_Phdr_bswap(Elf32_Phdr hdr)
 {
     hdr.p_type      = BSWAP32(hdr.p_type);
     hdr.p_offset    = BSWAP32(hdr.p_offset);
@@ -821,7 +824,7 @@ convert_pheader32_endian(Elf32_Phdr hdr)
 }
 
 static Elf32_Shdr
-convert_sheader32_endian(Elf32_Shdr hdr)
+Elf32_Shdr_bswap(Elf32_Shdr hdr)
 {
     hdr.sh_name	        = BSWAP32(hdr.sh_name);
     hdr.sh_type	        = BSWAP32(hdr.sh_type);
@@ -838,7 +841,7 @@ convert_sheader32_endian(Elf32_Shdr hdr)
 }
 
 static Elf32_Sym
-convert_symbol32_endian(Elf32_Sym sym)
+Elf32_Sym_bswap(Elf32_Sym sym)
 {
     sym.st_name     = BSWAP32(sym.st_name);
     sym.st_value    = BSWAP32(sym.st_value);
@@ -851,7 +854,7 @@ convert_symbol32_endian(Elf32_Sym sym)
 }
 
 static Elf64_Ehdr
-convert_header64_endian(Elf64_Ehdr hdr)
+Elf64_Ehdr_bswap(Elf64_Ehdr hdr)
 {
     hdr.e_type      = BSWAP16(hdr.e_type);
     hdr.e_machine   = BSWAP16(hdr.e_machine);
@@ -871,7 +874,7 @@ convert_header64_endian(Elf64_Ehdr hdr)
 }
 
 static Elf64_Phdr
-convert_pheader64_endian(Elf64_Phdr hdr)
+Elf64_Phdr_bswap(Elf64_Phdr hdr)
 {
     hdr.p_type      = BSWAP32(hdr.p_type);
     hdr.p_flags     = BSWAP32(hdr.p_flags);
@@ -886,7 +889,7 @@ convert_pheader64_endian(Elf64_Phdr hdr)
 }
 
 static Elf64_Shdr
-convert_sheader64_endian(Elf64_Shdr hdr)
+Elf64_Shdr_bswap(Elf64_Shdr hdr)
 {
     hdr.sh_name         = BSWAP32(hdr.sh_name);
     hdr.sh_type         = BSWAP32(hdr.sh_type);
@@ -903,7 +906,7 @@ convert_sheader64_endian(Elf64_Shdr hdr)
 }
 
 static
-Elf64_Sym convert_symbol64_endian(Elf64_Sym sym)
+Elf64_Sym Elf64_Sym_bswap(Elf64_Sym sym)
 {
     sym.st_name     = BSWAP32(sym.st_name);
     sym.st_info     = sym.st_info;
@@ -916,7 +919,7 @@ Elf64_Sym convert_symbol64_endian(Elf64_Sym sym)
 }
 
 static Elf64_Ehdr
-convert_header32to64(Elf32_Ehdr hdr)
+Elf32_Ehdr_to_Elf64_Ehdr(Elf32_Ehdr hdr)
 {
     Elf64_Ehdr temp_hdr;
     memcpy(temp_hdr.e_ident, hdr.e_ident, sizeof(temp_hdr.e_ident));
@@ -939,7 +942,7 @@ convert_header32to64(Elf32_Ehdr hdr)
 }
 
 static Elf64_Phdr
-convert_pheader32to64(Elf32_Phdr hdr)
+Elf32_Phdr_to_Elf64_Phdr(Elf32_Phdr hdr)
 {
     Elf64_Phdr temp_hdr;
 
@@ -956,7 +959,7 @@ convert_pheader32to64(Elf32_Phdr hdr)
 }
 
 static Elf64_Shdr
-convert_sheader32to64(Elf32_Shdr hdr)
+Elf32_Shdr_to_Elf64_Shdr(Elf32_Shdr hdr)
 {
     Elf64_Shdr temp_hdr;
 
@@ -975,7 +978,7 @@ convert_sheader32to64(Elf32_Shdr hdr)
 }
 
 static Elf64_Sym
-convert_symbol32to64(Elf32_Sym sym)
+Elf32_Sym_to_Elf64_Sym(Elf32_Sym sym)
 {
     Elf64_Sym temp_sym;
 
@@ -987,6 +990,102 @@ convert_symbol32to64(Elf32_Sym sym)
     temp_sym.st_size     = sym.st_size;
 
     return temp_sym;
+}
+
+static Elf64_Ehdr
+Ehdr32to64_bswap(void *bytes)
+{
+    return Elf32_Ehdr_to_Elf64_Ehdr(Elf32_Ehdr_bswap(*(Elf32_Ehdr *)bytes));
+}
+
+static Elf64_Ehdr
+Ehdr32to64(void *bytes)
+{
+    return Elf32_Ehdr_to_Elf64_Ehdr(*(Elf32_Ehdr*)bytes);
+}
+
+static Elf64_Ehdr
+Ehdr64to64_bswap(void *bytes)
+{
+    return Elf64_Ehdr_bswap(*(Elf64_Ehdr *)bytes);
+}
+
+static Elf64_Ehdr
+Ehdr64to64(void *bytes)
+{
+    return *(Elf64_Ehdr *)bytes;
+}
+
+static Elf64_Shdr
+Shdr32to64_bswap(void *bytes)
+{
+    return Elf32_Shdr_to_Elf64_Shdr(Elf32_Shdr_bswap(*(Elf32_Shdr *)bytes));
+}
+
+static Elf64_Shdr
+Shdr32to64(void *bytes)
+{
+    return Elf32_Shdr_to_Elf64_Shdr(*(Elf32_Shdr*)bytes);
+}
+
+static Elf64_Shdr
+Shdr64to64_bswap(void *bytes)
+{
+    return Elf64_Shdr_bswap(*(Elf64_Shdr *)bytes);
+}
+
+static Elf64_Shdr
+Shdr64to64(void *bytes)
+{
+    return *(Elf64_Shdr *)bytes;
+}
+
+static Elf64_Phdr
+Phdr32to64_bswap(void *bytes)
+{
+    return Elf32_Phdr_to_Elf64_Phdr(Elf32_Phdr_bswap(*(Elf32_Phdr *)bytes));
+}
+
+static Elf64_Phdr
+Phdr32to64(void *bytes)
+{
+    return Elf32_Phdr_to_Elf64_Phdr(*(Elf32_Phdr*)bytes);
+}
+
+static Elf64_Phdr
+Phdr64to64_bswap(void *bytes)
+{
+    return Elf64_Phdr_bswap(*(Elf64_Phdr *)bytes);
+}
+
+static Elf64_Phdr
+Phdr64to64(void *bytes)
+{
+    return *(Elf64_Phdr *)bytes;
+}
+
+static Elf64_Sym
+Sym32to64_bswap(void *bytes)
+{
+    return Elf32_Sym_to_Elf64_Sym(Elf32_Sym_bswap(*(Elf32_Sym *)bytes));
+}
+
+static Elf64_Sym
+Sym32to64(void *bytes)
+{
+    return Elf32_Sym_to_Elf64_Sym(*(Elf32_Sym*)bytes);
+}
+
+static Elf64_Sym
+Sym64to64_bswap(void *bytes)
+{
+    return Elf64_Sym_bswap(*(Elf64_Sym *)bytes);
+}
+
+static Elf64_Sym
+Sym64to64(void *bytes)
+{
+    return *(Elf64_Sym *)bytes;
 }
 
 static void
