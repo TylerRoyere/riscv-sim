@@ -4,29 +4,6 @@
 #include "elf.h"
 #include "utils.h"
 
-#define BSWAP16(x)  \
-    ((uint16_t)                         \
-    ( ((((uint16_t)x) & 0x00FF) << 8) | \
-      ((((uint16_t)x) & 0xFF00) >> 8)  ))
-
-#define BSWAP32(x)  \
-    ((uint32_t)                               \
-    ( ((((uint32_t)x) & 0x000000FF) << 24) |  \
-      ((((uint32_t)x) & 0x0000FF00) << 8)  |  \
-      ((((uint32_t)x) & 0x00FF0000) >> 8)  |  \
-      ((((uint32_t)x) & 0xFF000000) >> 24)   ))
-
-#define BSWAP64(x)  \
-    ((uint64_t)                                       \
-    ( ((((uint64_t)x) & 0x00000000000000FF) << 56) |  \
-      ((((uint64_t)x) & 0x000000000000FF00) << 40) |  \
-      ((((uint64_t)x) & 0x0000000000FF0000) << 24) |  \
-      ((((uint64_t)x) & 0x00000000FF000000) << 8 ) |  \
-      ((((uint64_t)x) & 0x000000FF00000000) >> 8 ) |  \
-      ((((uint64_t)x) & 0x0000FF0000000000) >> 24) |  \
-      ((((uint64_t)x) & 0x00FF000000000000) >> 40) |  \
-      ((((uint64_t)x) & 0xFF00000000000000) >> 56)   ))
-
 typedef unsigned char ident_array[EI_NIDENT];
 
 static inline int
@@ -411,7 +388,8 @@ load_symbol_table(FILE *infile, elf_program prog, size_t tab_index)
         return prog;
     }
 
-    size_t num_symbols = symtab.sh_size / symtab.sh_entsize;
+    size_t entsize = symtab.sh_entsize;
+    size_t num_symbols = symtab.sh_size / entsize;
     Elf64_Sym *table = malloc(num_symbols * sizeof(*table));
 
     if (table == NULL) {
@@ -419,8 +397,11 @@ load_symbol_table(FILE *infile, elf_program prog, size_t tab_index)
         return prog;
     }
 
+    assert(entsize <= sizeof(temp_sym) &&
+            "Symbol table entry size larger than maximum expected");
+
     for (size_t ii = 0; ii < num_symbols; ii++) {
-        if (fread(&temp_sym, 1, sizeof(temp_sym), infile) != sizeof(temp_sym)) {
+        if (fread(&temp_sym, 1, entsize, infile) != entsize) {
             prog.error = "Failed to read Elf32_Sym from file";
             free(table);
             return prog;
@@ -736,7 +717,8 @@ read_elf_header_machine(FILE *infile, elf_program prog,
         size = sizeof(Elf64_Ehdr);
     }
 
-    assert(size >= sizeof(temp));
+    assert(size >= sizeof(temp) &&
+            "Calculated ELF header size is wrong");
 
     if (fread(&temp, 1, size, infile) != size) {
         prog.error = "Failed to read Elf64_Ehdr header";
